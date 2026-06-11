@@ -1,0 +1,47 @@
+#!/bin/bash
+# AppRun for Bisync Control Center
+# Detects environment and launches GUI or CLI accordingly
+# Supports --gui, --cli, and --help flags
+
+APPDIR="$(dirname "$(readlink -f "$0")")"
+
+show_help() {
+    echo "Bisync Control Center (AppImage)"
+    echo
+    echo "Usage:"
+    echo "  ./Bisync-x86_64.AppImage [options]"
+    echo
+    echo "Options:"
+    echo "  --gui       Force launch in GUI mode (Qt/QML dashboard)"
+    echo "  --cli       Force launch in CLI mode (bisync-status.sh)"
+    echo "  --help      Show this help message"
+    echo
+    echo "Default behavior:"
+    echo "  - If launched from terminal → CLI mode"
+    echo "  - If launched from desktop → GUI mode"
+    exit 0
+}
+
+# Parse override flags
+for arg in "$@"; do
+    case "$arg" in
+        --gui)
+            exec qmlscene "$APPDIR/usr/share/bisync/qml/main.qml"
+            ;;
+        --cli)
+            exec "$APPDIR/usr/bin/bisync-status.sh" "${@:2}"
+            ;;
+        --help)
+            show_help
+            ;;
+    esac
+done
+
+# Auto-detect environment if no override
+if [ -t 1 ]; then
+    # Terminal detected → run CLI status tool
+    exec "$APPDIR/usr/bin/bisync-status.sh" "$@"
+else
+    # No terminal → launch GUI dashboard
+    exec qmlscene "$APPDIR/usr/share/bisync/qml/main.qml"
+fi

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Bisync Control Center
+Exec=bisync-status.sh
+Icon=bisync
+Type=Application
+Categories=Utility;System;
+Comment=Rclone Bisync Control Center with automation and reporting
