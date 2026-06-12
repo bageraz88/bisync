@@ -1,17 +1,21 @@
-### THIS PROJECT NOT YET FINAL - NO PROPER TESTING
-### DOCUMENTATION IS NOT COMPLETE - WORK ON PROGRESS
-# THIS LINE WILL BE DELETE ONCE TESTED
+> [!NOTE]
+> FEEL FREE TO IMPROVE THE SCRIPTS
 
----
+> [!WARNING]
+> ALL SCRIPTS ARE **NOT TESTED YET**
+
+> [!CAUTION]
+> THIS PROJECT NOT YET FINAL
 
 # 📦 Bisync Control Center (AppImage)
 
 A **portable desktop app** for managing [rclone bisync](https://rclone.org/bisync/) with automation, reporting, and a friendly GUI.  
 This repository includes all scripts required to build an AppImage, run a GUI and CLI, rotate and archive logs, and generate weekly reports.
 
----
-
-## 🚀 Quick Start
+<details>
+<summary>
+🚀 Quick Start
+</summary>
 
     # 1. Prepare AppDir
     ./setup-bisync.sh
@@ -22,10 +26,13 @@ This repository includes all scripts required to build an AppImage, run a GUI an
     # 3. Run Bisync
     chmod +x Bisync-x86_64.AppImage
     ./Bisync-x86_64.AppImage
+	
+</details>
 
----
-
-## 📂 Directory Layout
+<details>
+<summary>
+📂 Directory Layout
+</summary>
 
     AppDir/
      ├── AppRun
@@ -43,304 +50,415 @@ This repository includes all scripts required to build an AppImage, run a GUI an
                └── bisync/
                     └── qml/
                          └── main.qml
-
----
+	
+</details>
 
 ## 🛠️ Scripts
 
 Below are the **full scripts** included in this project. Copy each into the appropriate file under `AppDir/` or `AppDir/usr/bin/` and make them executable.
 
-### setup-bisync.sh
+### 🛠📂 AppDir/
 
-    #!/usr/bin/env bash
-    set -euo pipefail
+<details>
+<summary>
+bisync.desktop
+</summary>
 
-    # Creates AppDir layout and copies scripts, desktop file, icons, and QML
-    APPDIR="AppDir"
-    BIN_DIR="$APPDIR/usr/bin"
-    SHARE_DIR="$APPDIR/usr/share/bisync"
-    QML_DIR="$SHARE_DIR/qml"
+	[Desktop Entry]
+	Name=Bisync Control Center
+	Exec=bisync-status.sh
+	Icon=bisync
+	Type=Application
+	Categories=Utility;System;
+	Comment=Rclone Bisync Control Center with automation and reporting
+	
+</details>
 
-    rm -rf "$APPDIR"
-    mkdir -p "$BIN_DIR" "$QML_DIR"
+<details>
+<summary>
+setup-bisync.sh
+</summary>
 
-    # Copy scripts (assumes this script is run from repo root where scripts live)
-    cp ./scripts/bisync-status.sh "$BIN_DIR/"
-    cp ./scripts/bisync-report.sh "$BIN_DIR/"
-    cp ./scripts/bisync-logrotate.sh "$BIN_DIR/"
-    cp ./scripts/bisync-logarchive.sh "$BIN_DIR/"
-    cp ./scripts/bisync-archive-viewer.sh "$BIN_DIR/"
-    cp ./scripts/bisync-checkconflicts.sh "$BIN_DIR/"
+	#!/bin/bash
+	# Bisync AppImage setup script
 
-    # Install AppRun, desktop file, and icons
-    cp ./packaging/AppRun "$APPDIR/"
-    cp ./packaging/bisync.desktop "$APPDIR/"
-    cp ./assets/bisync.png "$APPDIR/"
-    cp ./assets/bisync.svg "$APPDIR/"
+	# Create directory structure
+	mkdir -p AppDir/usr/bin AppDir/usr/share/bisync/qml
 
-    # Install QML frontend
-    cp ./qml/main.qml "$QML_DIR/"
+	# Copy backend scripts (assuming they’re in ./scripts/)
+	cp scripts/bisync-*.sh AppDir/usr/bin/
 
-    # Make binaries executable
-    chmod +x "$BIN_DIR"/*.sh
-    chmod +x "$APPDIR/AppRun"
+	# Create main.qml
+	cat > AppDir/usr/share/bisync/qml/main.qml <<'EOF'
+	import QtQuick 2.15
+	import QtQuick.Controls 2.15
+	import QtQuick.Dialogs 1.3
 
-    echo "AppDir prepared at $APPDIR"
+	ApplicationWindow {
+		visible: true
+		width: 500
+		height: 400
+		title: "Bisync Control Center"
 
----
+		MessageDialog {
+			id: conflictDialog
+			title: "⚠ Conflicts Detected"
+			text: ""   // set dynamically
+			icon: StandardIcon.Warning
+			visible: false
+			onAccepted: conflictDialog.visible = false
+		}
 
-### AppRun
+		MessageDialog {
+			id: clearDialog
+			title: "✅ All Clear"
+			text: "No conflicts detected. Sync is healthy."
+			icon: StandardIcon.Information
+			visible: false
+			onAccepted: clearDialog.visible = false
+		}
 
-    #!/usr/bin/env bash
-    # Smart launcher: choose GUI or CLI based on environment or flags
+		Column {
+			anchors.centerIn: parent
+			spacing: 20
 
-    set -euo pipefail
+			Label {
+				text: "Rclone Bisync Status"
+				font.pixelSize: 20
+				horizontalAlignment: Text.AlignHCenter
+			}
 
-    SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-    BIN_DIR="$SCRIPT_DIR/usr/bin"
+			Button { text: "Check Status"; onClicked: Qt.openUrlExternally("bash -c '~/bin/bisync-status.sh'") }
+			Button { text: "View Report"; onClicked: Qt.openUrlExternally("bash -c '~/bin/bisync-report.sh'") }
+			Button { text: "Archive Viewer"; onClicked: Qt.openUrlExternally("bash -c '~/bin/bisync-archive-viewer.sh'") }
+			Button { text: "Exit"; onClicked: Qt.quit() }
+		}
 
-    show_help() {
-      cat <<EOF
-    Bisync AppImage launcher
+		Component.onCompleted: {
+			var conflicts = Qt.openUrlExternally("bash -c '~/bin/bisync-checkconflicts.sh'")
+			conflictDialog.text = "⚠ " + conflicts + " conflicts detected. Please check the logs."
+			if (conflicts > 0) conflictDialog.visible = true
+			else clearDialog.visible = true
+		}
+	}
+	EOF
 
-    Usage:
-      --gui     Force GUI mode
-      --cli     Force CLI mode
-      --help    Show this help
-    EOF
-    }
+	# Create AppRun
+	cat > AppDir/AppRun <<'EOF'
+	#!/bin/bash
+	APPDIR="$(dirname "$(readlink -f "$0")")"
 
-    # Parse flags
-    MODE=""
-    for arg in "$@"; do
-      case "$arg" in
-        --gui) MODE="gui" ;;
-        --cli) MODE="cli" ;;
-        --help) show_help; exit 0 ;;
-      esac
-    done
+	show_help() {
+		echo "Bisync Control Center (AppImage)"
+		echo
+		echo "Usage:"
+		echo "  ./Bisync-x86_64.AppImage [options]"
+		echo
+		echo "Options:"
+		echo "  --gui       Force launch in GUI mode"
+		echo "  --cli       Force launch in CLI mode"
+		echo "  --help      Show this help message"
+		echo
+		echo "Default behavior:"
+		echo "  - Terminal → CLI mode"
+		echo "  - Desktop → GUI mode"
+		exit 0
+	}
 
-    # If not forced, detect whether running in a terminal
-    if [ -z "$MODE" ]; then
-      if [ -t 1 ]; then
-        MODE="cli"
-      else
-        MODE="gui"
-      fi
-    fi
+	for arg in "$@"; do
+		case "$arg" in
+			--gui) exec qmlscene "$APPDIR/usr/share/bisync/qml/main.qml" ;;
+			--cli) exec "$APPDIR/usr/bin/bisync-status.sh" "${@:2}" ;;
+			--help) show_help ;;
+		esac
+	done
 
-    if [ "$MODE" = "cli" ]; then
-      exec "$BIN_DIR/bisync-status.sh" "$@"
-    else
-      # Launch QML GUI
-      QML="$SCRIPT_DIR/usr/share/bisync/qml/main.qml"
-      if command -v qmlscene >/dev/null 2>&1; then
-        exec qmlscene "$QML"
-      elif command -v qml >/dev/null 2>&1; then
-        exec qml "$QML"
-      else
-        echo "GUI runtime not found. Install Qt Quick (qmlscene) or run with --cli." >&2
-        exit 1
-      fi
-    fi
+	if [ -t 1 ]; then
+		exec "$APPDIR/usr/bin/bisync-status.sh" "$@"
+	else
+		exec qmlscene "$APPDIR/usr/share/bisync/qml/main.qml"
+	fi
+	EOF
+	chmod +x AppDir/AppRun
 
----
+	# Create bisync.desktop
+	cat > AppDir/bisync.desktop <<'EOF'
+	[Desktop Entry]
+	Name=Bisync Control Center
+	Exec=AppRun
+	Icon=bisync
+	Type=Application
+	Categories=Utility;System;
+	Comment=Rclone Bisync Control Center with automation and reporting
+	EOF
 
-### build-appimage.sh
+	# Copy logo (assuming bisync.png is in ./assets/)
+	cp assets/bisync.png AppDir/
 
-    #!/usr/bin/env bash
-    set -euo pipefail
+	echo "✅ Bisync AppDir fully prepared. Ready for AppImage build."
 
-    # Build AppImage with fixed filename
-    if ! command -v appimagetool >/dev/null 2>&1; then
-      echo "appimagetool not found. Install AppImageKit to build." >&2
-      exit 1
-    fi
+	
+</details>
 
-    appimagetool AppDir Bisync-x86_64.AppImage
-    echo "✅ Build complete: Bisync-x86_64.AppImage"
+<details>
+<summary>
+AppRun
+</summary>
 
----
+	#!/bin/bash
+	# AppRun for Bisync Control Center
+	# Detects environment and launches GUI or CLI accordingly
+	# Supports --gui, --cli, and --help flags
 
-### bisync-status.sh
+	APPDIR="$(dirname "$(readlink -f "$0")")"
 
-    #!/usr/bin/env bash
-    # Check bisync status and output JSON summary
-    set -euo pipefail
+	show_help() {
+		echo "Bisync Control Center (AppImage)"
+		echo
+		echo "Usage:"
+		echo "  ./Bisync-x86_64.AppImage [options]"
+		echo
+		echo "Options:"
+		echo "  --gui       Force launch in GUI mode (Qt/QML dashboard)"
+		echo "  --cli       Force launch in CLI mode (bisync-status.sh)"
+		echo "  --help      Show this help message"
+		echo
+		echo "Default behavior:"
+		echo "  - If launched from terminal → CLI mode"
+		echo "  - If launched from desktop → GUI mode"
+		exit 0
+	}
 
-    LOG_DIR="${HOME}/.local/share/bisync/logs"
-    LAST_LOG="$(ls -1t "$LOG_DIR" 2>/dev/null | head -n1 || true)"
-    CONFLICTS=0
+	# Parse override flags
+	for arg in "$@"; do
+		case "$arg" in
+			--gui)
+				exec qmlscene "$APPDIR/usr/share/bisync/qml/main.qml"
+				;;
+			--cli)
+				exec "$APPDIR/usr/bin/bisync-status.sh" "${@:2}"
+				;;
+			--help)
+				show_help
+				;;
+		esac
+	done
 
-    # Example: parse last log for conflict lines
-    if [ -n "$LAST_LOG" ] && [ -f "$LOG_DIR/$LAST_LOG" ]; then
-      CONFLICTS=$(grep -c "CONFLICT" "$LOG_DIR/$LAST_LOG" || true)
-    fi
+	# Auto-detect environment if no override
+	if [ -t 1 ]; then
+		# Terminal detected → run CLI status tool
+		exec "$APPDIR/usr/bin/bisync-status.sh" "$@"
+	else
+		# No terminal → launch GUI dashboard
+		exec qmlscene "$APPDIR/usr/share/bisync/qml/main.qml"
+	fi
+	
+</details>
 
-    jq -n \
-      --arg last_log "$LAST_LOG" \
-      --argjson conflicts "$CONFLICTS" \
-      '{last_log: $last_log, conflicts: $conflicts, status: (if $conflicts|tonumber > 0 then "conflicts" else "ok" end)}'
+<details>
+<summary>
+build-appimage.sh
+</summary>
 
+	#!/bin/bash
+	# Bisync AppImage build script (simple naming)
+
+	# Build AppImage
+	appimagetool AppDir Bisync-x86_64.AppImage
+
+	echo "✅ Build complete: Bisync-x86_64.AppImage"
+
+</details>
+
+### 🛠📂 AppDir/usr/bin/
+
+<details>
+<summary>
+bisync-status.sh
+</summary>
+
+	#!/bin/bash
+	LOGFILE="$HOME/.local/share/rclone-bisync.log"
+	STATUSFILE="$HOME/.local/share/rclone-bisync-status.json"
+
+	CONFLICTS=$(grep -oP 'Conflicts:\s+\K\d+' "$LOGFILE" | tail -n1)
+	COPIED=$(grep -oP 'Copied:\s+\K\d+' "$LOGFILE" | tail -n1)
+	DELETED=$(grep -oP 'Deleted:\s+\K\d+' "$LOGFILE" | tail -n1)
+
+	jq -n --arg conflicts "$CONFLICTS" --arg copied "$COPIED" --arg deleted "$DELETED" \
+	  '{conflicts: ($conflicts|tonumber), copied: ($copied|tonumber), deleted: ($deleted|tonumber)}' > "$STATUSFILE"
+
+	cat "$STATUSFILE"
+	
 > Note: `jq` is used here to produce JSON. Install `jq` or replace with another formatter if needed.
+	
+</details>
 
----
+<details>
+<summary>
+bisync-report.sh
+</summary>
 
-### bisync-report.sh
+	#!/bin/bash
+	ARCHIVE_DIR="$HOME/.local/share/rclone-bisync/archive"
+	CSVFILE="$HOME/.local/share/rclone-bisync/weekly-report.csv"
 
-    #!/usr/bin/env bash
-    # Generate weekly CSV report from logs
-    set -euo pipefail
+	mkdir -p "$ARCHIVE_DIR"
+	echo "Date,Synced,Deleted,Conflicts" > "$CSVFILE"
 
-    LOG_DIR="${HOME}/.local/share/bisync/logs"
-    REPORT_DIR="${HOME}/.local/share/bisync/reports"
-    mkdir -p "$REPORT_DIR"
+	for FILE in "$ARCHIVE_DIR"/bisync-*.log; do
+		DATE=$(basename "$FILE" | cut -d'-' -f2-4 | cut -d'.' -f1)
+		SYNCED=$(grep -oP 'Copied:\s+\K\d+' "$FILE" | tail -n1)
+		DELETED=$(grep -oP 'Deleted:\s+\K\d+' "$FILE" | tail -n1)
+		CONFLICTS=$(grep -oP 'Conflicts:\s+\K\d+' "$FILE" | tail -n1)
+		echo "$DATE,${SYNCED:-0},${DELETED:-0},${CONFLICTS:-0}" >> "$CSVFILE"
+	done
 
-    OUT="$REPORT_DIR/bisync-weekly-$(date +%Y-%m-%d).csv"
-    echo "date,operation,files_changed,conflicts" > "$OUT"
+	column -t -s, "$CSVFILE"
+	echo "✅ CSV report saved to $CSVFILE"
+	
+</details>
 
-    # Simple parser: expects lines like "YYYY-MM-DD OP files=X conflicts=Y"
-    for f in "$LOG_DIR"/*; do
-      awk '/^[0-9]{4}-[0-9]{2}-[0-9]{2}/ {
-        date=$1; op=$2;
-        files=0; conflicts=0;
-        for(i=3;i<=NF;i++){
-          if ($i ~ /^files=/) { split($i,a,"="); files=a[2] }
-          if ($i ~ /^conflicts=/) { split($i,b,"="); conflicts=b[2] }
-        }
-        print date","op","files","conflicts
-      }' "$f" >> "$OUT" || true
-    done
+<details>
+<summary>
+bisync-logrotate.sh
+</summary>
 
-    echo "Report written to $OUT"
+	#!/bin/bash
+	LOGFILE="$HOME/.local/share/rclone-bisync.log"
+	MAXLINES=500
+	tail -n $MAXLINES "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
+	
+</details>
 
----
+<details>
+<summary>
+bisync-logarchive.sh
+</summary>
 
-### bisync-logrotate.sh
+	#!/bin/bash
+	LOGFILE="$HOME/.local/share/rclone-bisync.log"
+	ARCHIVE_DIR="$HOME/.local/share/rclone-bisync/archive"
+	MAXLINES=500
 
-    #!/usr/bin/env bash
-    # Rotate logs older than 30 days
-    set -euo pipefail
+	mkdir -p "$ARCHIVE_DIR"
+	DATESTAMP=$(date '+%Y-%m-%d')
+	cp "$LOGFILE" "$ARCHIVE_DIR/bisync-$DATESTAMP.log"
+	tail -n $MAXLINES "$LOGFILE" > "$LOGFILE.tmp" && mv "$LOGFILE.tmp" "$LOGFILE"
+	
+</details>
 
-    LOG_DIR="${HOME}/.local/share/bisync/logs"
-    mkdir -p "$LOG_DIR"
-    find "$LOG_DIR" -type f -mtime +30 -print -delete
-    echo "Old logs rotated"
+<details>
+<summary>
+bisync-archive-viewer.sh
+</summary>
 
----
+	#!/bin/bash
+	ARCHIVE_DIR="$HOME/.local/share/rclone-bisync/archive"
+	mkdir -p "$ARCHIVE_DIR"
 
-### bisync-logarchive.sh
+	echo "=== Available Bisync Archived Logs ==="
+	ls -1 "$ARCHIVE_DIR" | sort
 
-    #!/usr/bin/env bash
-    # Archive weekly logs into compressed tarball
-    set -euo pipefail
+	echo "Options: 1) View file  2) Search keyword  3) Exit"
+	read -p "Choose option [1-3]: " CHOICE
 
-    LOG_DIR="${HOME}/.local/share/bisync/logs"
-    ARCHIVE_DIR="${HOME}/.local/share/bisync/archives"
-    mkdir -p "$ARCHIVE_DIR"
+	case "$CHOICE" in
+	  1) read -p "Enter filename: " FILE; less "$ARCHIVE_DIR/$FILE" ;;
+	  2) read -p "Enter keyword: " KEY; grep -H "$KEY" "$ARCHIVE_DIR"/*.log ;;
+	  *) echo "Exiting." ;;
+	esac
+	
+</details>
 
-    TS=$(date +%Y%m%d)
-    tar -czf "$ARCHIVE_DIR/bisync-logs-$TS.tar.gz" -C "$LOG_DIR" .
-    echo "Archived logs to $ARCHIVE_DIR/bisync-logs-$TS.tar.gz"
+<details>
+<summary>
+bisync-checkconflicts.sh
+</summary>
 
----
+	#!/bin/bash
+	STATUSFILE="$HOME/.local/share/rclone-bisync-status.json"
+	if [ -f "$STATUSFILE" ]; then
+		jq -r '.conflicts' "$STATUSFILE"
+	else
+		echo "0"
+	fi
+	
+</details>
 
-### bisync-archive-viewer.sh
+### 🛠📂 AppDir/usr/share/bisync/qml
 
-    #!/usr/bin/env bash
-    # Simple archive viewer: list and extract archives
-    set -euo pipefail
+<details>
+<summary>
+main.qml
+</summary>
 
-    ARCHIVE_DIR="${HOME}/.local/share/bisync/archives"
-    case "${1:-list}" in
-      list)
-        ls -1 "$ARCHIVE_DIR"
-        ;;
-      show)
-        tar -tzf "$ARCHIVE_DIR/$2"
-        ;;
-      extract)
-        mkdir -p ./bisync-archive-extract
-        tar -xzf "$ARCHIVE_DIR/$2" -C ./bisync-archive-extract
-        echo "Extracted to ./bisync-archive-extract"
-        ;;
-      *)
-        echo "Usage: $0 {list|show <archive>|extract <archive>}"
-        ;;
-    esac
+	import QtQuick 2.15
+	import QtQuick.Controls 2.15
+	import QtQuick.Dialogs 1.3
 
----
+	ApplicationWindow {
+		visible: true
+		width: 500
+		height: 400
+		title: "Bisync Control Center"
 
-### bisync-checkconflicts.sh
+		MessageDialog {
+			id: conflictDialog
+			title: "⚠ Conflicts Detected"
+			text: ""   // set dynamically
+			icon: StandardIcon.Warning
+			visible: false
+			onAccepted: conflictDialog.visible = false
+		}
 
-    #!/usr/bin/env bash
-    # Count conflicts across logs
-    set -euo pipefail
+		MessageDialog {
+			id: clearDialog
+			title: "✅ All Clear"
+			text: "No conflicts detected. Sync is healthy."
+			icon: StandardIcon.Information
+			visible: false
+			onAccepted: clearDialog.visible = false
+		}
 
-    LOG_DIR="${HOME}/.local/share/bisync/logs"
-    grep -h "CONFLICT" "$LOG_DIR"/* 2>/dev/null | wc -l
+		Column {
+			anchors.centerIn: parent
+			spacing: 20
 
----
+			Label {
+				text: "Rclone Bisync Status"
+				font.pixelSize: 20
+				horizontalAlignment: Text.AlignHCenter
+			}
 
-### main.qml (placeholder)
+			Button { text: "Check Status"; onClicked: Qt.openUrlExternally("bash -c '~/bin/bisync-status.sh'") }
+			Button { text: "View Report"; onClicked: Qt.openUrlExternally("bash -c '~/bin/bisync-report.sh'") }
+			Button { text: "Archive Viewer"; onClicked: Qt.openUrlExternally("bash -c '~/bin/bisync-archive-viewer.sh'") }
+			Button { text: "Exit"; onClicked: Qt.quit() }
+		}
 
-    import QtQuick 2.12
-    import QtQuick.Controls 2.5
-
-    ApplicationWindow {
-      visible: true
-      width: 640
-      height: 480
-      title: "Bisync Control Center"
-
-      Column {
-        anchors.centerIn: parent
-        spacing: 12
-
-        Button {
-          text: "Status"
-          onClicked: Qt.openUrlExternally("bisync://status")
-        }
-
-        Button {
-          text: "Weekly Report"
-          onClicked: Qt.openUrlExternally("bisync://report")
-        }
-
-        Button {
-          text: "Archive Viewer"
-          onClicked: Qt.openUrlExternally("bisync://archive")
-        }
-      }
-    }
-
----
-
-### bisync.desktop
-
-    [Desktop Entry]
-    Name=Bisync Control Center
-    Comment=Manage rclone bisync with GUI and automation
-    Exec=Bisync-x86_64.AppImage --gui
-    Icon=bisync
-    Terminal=false
-    Type=Application
-    Categories=Utility;System;
-
----
+		Component.onCompleted: {
+			var conflicts = Qt.openUrlExternally("bash -c '~/bin/bisync-checkconflicts.sh'")
+			conflictDialog.text = "⚠ " + conflicts + " conflicts detected. Please check the logs."
+			if (conflicts > 0) conflictDialog.visible = true
+			else clearDialog.visible = true
+		}
+	}
+	
+</details>
 
 ## 🚀 Usage
 
-    # Build and run
+##### Build and run
     ./setup-bisync.sh
     ./build-appimage.sh
     chmod +x Bisync-x86_64.AppImage
     ./Bisync-x86_64.AppImage
 
-    # Force CLI
+##### Force CLI
     ./Bisync-x86_64.AppImage --cli
 
-    # Force GUI
+##### Force GUI
     ./Bisync-x86_64.AppImage --gui
 
 ---
